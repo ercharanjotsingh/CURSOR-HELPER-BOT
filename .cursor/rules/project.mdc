@@ -3,6 +3,10 @@ description: Project conventions for CURSOR-HELPER-BOT (Python RAG chatbot)
 alwaysApply: true
 ---
 
+# Project
+
+- CURSOR-HELPER-BOT answers questions about using Cursor to build chatbots, using only the Markdown files in `data/`
+
 # Stack
 
 - Python 3.11
@@ -16,6 +20,7 @@ alwaysApply: true
 - Keep functions small and single-purpose
 - Prefer clear module boundaries: ingest → retrieve → generate → UI
 - Do not invent dependencies beyond `requirements.txt` without asking
+- Keep all settings (paths, chunk size, top-k) in one `config.py`
 
 # Testing
 
@@ -29,15 +34,19 @@ alwaysApply: true
 - Retrieve top-k chunks; dedupe by chunk ID when needed
 - Answers must use retrieved context only; otherwise say “I don’t know”
 - Preserve source metadata through the pipeline for citations
+- If the answer is not in the retrieved chunks, reply exactly: "I don't know."
+- Every answer must cite the source file and the question heading it came from
 
 # Secrets and Git
 
 - Never commit `.env`, API keys, or `chroma_db/`
 - Keep `.venv/`, `__pycache__/`, and local DB artifacts out of Git
 - Commit after each working feature; prefer plan → approve → implement → test
+- Never hardcode or print API keys; read them from `.env`
 
 # Agent workflow
 
 - Propose a short plan and wait for approval before multi-file changes
 - One feature per change set; name the files you will touch
 - Prefer small diffs; do not rewrite unrelated files or the knowledge base unless asked
+- After each task, explain what you changed in two or three sentences
