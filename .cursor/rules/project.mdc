@@ -25,7 +25,7 @@ alwaysApply: true
 # RAG behavior
 
 - Load Markdown from `data/` only unless told otherwise
-- Default chunking: ~500-token chunks, ~50-token overlap (document any change)
+- Chunking: for Markdown files, split by "###" headings so each Q&A is one chunk; split any chunk longer than ~500 tokens with ~50-token overlap (document any change)
 - Retrieve top-k chunks; dedupe by chunk ID when needed
 - Answers must use retrieved context only; otherwise say “I don’t know”
 - Preserve source metadata through the pipeline for citations
