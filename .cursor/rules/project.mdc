@@ -1,0 +1,43 @@
+---
+description: Project conventions for CURSOR-HELPER-BOT (Python RAG chatbot)
+alwaysApply: true
+---
+
+# Stack
+
+- Python 3.11
+- RAG over Markdown in `data/`; vector store is local Chroma (`chromadb`)
+- Config and secrets via `python-dotenv` and `.env` (see `.env.example`)
+- Prefer a simple UI (e.g. Streamlit) with source citations when building chat
+
+# Code style
+
+- Add type hints on public functions and key internals
+- Keep functions small and single-purpose
+- Prefer clear module boundaries: ingest → retrieve → generate → UI
+- Do not invent dependencies beyond `requirements.txt` without asking
+
+# Testing
+
+- Write pytest tests for ingestion, retrieval, and answer grounding
+- Prefer one focused test file per module; cover happy path and “I don’t know”
+
+# RAG behavior
+
+- Load Markdown from `data/` only unless told otherwise
+- Default chunking: ~500-token chunks, ~50-token overlap (document any change)
+- Retrieve top-k chunks; dedupe by chunk ID when needed
+- Answers must use retrieved context only; otherwise say “I don’t know”
+- Preserve source metadata through the pipeline for citations
+
+# Secrets and Git
+
+- Never commit `.env`, API keys, or `chroma_db/`
+- Keep `.venv/`, `__pycache__/`, and local DB artifacts out of Git
+- Commit after each working feature; prefer plan → approve → implement → test
+
+# Agent workflow
+
+- Propose a short plan and wait for approval before multi-file changes
+- One feature per change set; name the files you will touch
+- Prefer small diffs; do not rewrite unrelated files or the knowledge base unless asked
