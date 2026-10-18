@@ -9,7 +9,7 @@ B. Prompting and context
 Q4. How do I give Cursor context about my code and docs?
 Type @ references in your prompt. Use @file or @folder to point at specific code, @docs to reference documentation (you can add custom documentation URLs), @web to search the web, and @git to reference commits and diffs. When something fails, paste the exact error message or terminal output instead of describing it.
 Q5. What are Cursor Rules, and where do they live?
-Rules are standing instructions that Cursor applies to your project, such as the language version, test framework, and coding style. They live in the .cursor/rules folder; older versions used a single .cursorrules file. A useful rule for the chatbot project: use Python 3.11, add type hints, write pytest tests, keep functions small, and never commit secrets. Rules save you from repeating these instructions in every prompt.
+Rules are standing instructions that Cursor applies to your project, such as the language version, test framework, and coding style. They live in the .cursor/team-rules folder; older versions used a single .cursorrules file. A useful rule for the chatbot project: use Python 3.11, add type hints, write pytest tests, keep functions small, and never commit secrets. Rules save you from repeating these instructions in every prompt.
 Q6. What makes a good prompt in Cursor?
 A good prompt states four things: the goal, the relevant context, the constraints (libraries to use or avoid), and the expected output. A weak prompt is "make a chatbot." A strong prompt is "Create ingest.py that loads PDFs from /data, splits them into 500-token chunks, embeds them, and stores them in Chroma. Do not touch other files."
 Q7. How do I avoid large, messy changes from the Agent?
@@ -30,3 +30,10 @@ Q13. What prompt can I use for the ingestion step?
 "Create ingest.py that loads Markdown files from /data, splits them into 500-token chunks with 50-token overlap, embeds them with my chosen embedding API, and stores them in a local Chroma database. Do not touch other files. Add a short README section on how to run it. Explain your plan first and wait for my approval."
 Q14. How do I use GitHub with Cursor while building?
 Create a GitHub repository at the start and commit after each working feature. Use a feature branch for each step, push it, and open a pull request. Review the diff yourself before merging, and let Cursor help draft commit messages and the pull request description. Never commit .env or API keys.
+E. Team conventions
+Q15. What is our team's code review rule?
+Every pull request needs two approvals, and one must come from a senior engineer. Pull requests larger than 400 changed lines must be split before review.
+Q16. Who owns the CURSOR-HELPER-BOT project?
+The project is owned by the Platform Enablement team. Questions go to the #cursor-helper channel on Slack.
+Q17. What is the name of our internal staging environment?
+The staging environment is called Falcon. Deploy to Falcon before every production release.
