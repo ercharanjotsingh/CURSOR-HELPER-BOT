@@ -10,5 +10,5 @@ TOP_K = 6
 MAX_DISTANCE = 1.6
 IDK_MESSAGE = "I don't know."
 
-GEMINI_MODEL = "gemini-3.8-flash"
-GEMINI_FALLBACK_MODELS = ["gemini-3.7-flash", "gemini-3.5-flash-lite"]
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+GEMINI_FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
