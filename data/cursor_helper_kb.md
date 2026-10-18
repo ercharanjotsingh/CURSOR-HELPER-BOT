@@ -18,7 +18,7 @@ C. Agent mode
 Q8. What is Agent mode, and how is it different from Chat and Cmd/Ctrl+K?
 Cmd/Ctrl+K edits a selected piece of code in place. Chat answers questions and suggests code. Agent mode goes further: it can create and edit multiple files, run terminal commands, read the results, and fix its own errors. Use Cmd/Ctrl+K for small local edits and Agent for features that span several files.
 Q9. How should I communicate with the Agent?
-Treat it like a capable junior developer who cannot read your mind. Ask for a plan first and approve it. Review every diff and read each terminal command before allowing it. When something breaks, paste the error and ask for the root cause before any change. Correct it specifically, for example "dedupe retrieved chunks by chunk ID" rather than "it's broken."
+Treat it like a capable junior developer who cannot read your mind. Ask for a plan first and approve it. Review every diff and read each terminal command before allowing it. When something breaks, paste the error and ask for the root cause before any change. Correct it specifically, for example "dedupe retrieved chunks by chunk ID" rather than "it's broken." Also asked as: How do I talk to the Agent? How do I prompt the Agent? What is the best way to give instructions to the Agent?
 Q10. How do I undo something the Agent got wrong?
 Reject the diff for the files you do not want. Use Cursor's checkpoints to restore an earlier state of the conversation. For a stronger safety net, commit to Git before every big task, so git restore or git reset can bring back a working version.
 Q11. When should I start a new chat?

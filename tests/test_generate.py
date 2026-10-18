@@ -67,3 +67,58 @@ def test_prompt_contains_chunks_and_question() -> None:
     assert "[Q5]" in prompt
     assert "Sample answer text for Q5" in prompt
     assert "Where are rules?" in prompt
+
+
+def test_condense_without_history_skips_llm(monkeypatch) -> None:
+    def boom(*args, **kwargs):
+        raise AssertionError("LLM should not be called without history")
+
+    monkeypatch.setattr(generate, "_call_llm", boom)
+    assert generate.condense_question("Where are rules?", []) == "Where are rules?"
+    assert generate.condense_question("Where are rules?", None) == "Where are rules?"
+
+
+def test_condense_rewrites_followup(monkeypatch) -> None:
+    seen: dict[str, str] = {}
+
+    def fake(system: str, user: str) -> str:
+        seen["user"] = user
+        return "How do I undo Agent changes in Cursor?"
+
+    monkeypatch.setattr(generate, "_call_llm", fake)
+    result = generate.condense_question(
+        "and how do I undo it?", [("What is Agent mode?", "Agent mode edits files.")]
+    )
+    assert result == "How do I undo Agent changes in Cursor?"
+    assert "What is Agent mode?" in seen["user"]
+
+
+def test_condense_falls_back_on_error(monkeypatch) -> None:
+    def fail(system: str, user: str) -> str:
+        raise generate.GenerationError("down")
+
+    monkeypatch.setattr(generate, "_call_llm", fail)
+    result = generate.condense_question("and undo it?", [("q", "a")])
+    assert result == "and undo it?"
+
+
+def test_answer_question_retrieves_with_standalone_question(monkeypatch) -> None:
+    queries: list[str] = []
+
+    def fake_retrieve(q: str) -> list[dict[str, Any]]:
+        queries.append(q)
+        return [make_chunk("Q10", 0.7)]
+
+    monkeypatch.setattr(generate, "condense_question", lambda q, h: "standalone question")
+    monkeypatch.setattr(generate, "retrieve", fake_retrieve)
+    monkeypatch.setattr(generate, "_call_llm", lambda s, u: "Reject the diff. [Q10]")
+
+    result = answer_question("and undo it?", history=[("a", "b")])
+    assert queries == ["standalone question"]
+    assert result["standalone_question"] == "standalone question"
+
+
+def test_finalize_empty_reply_is_idk() -> None:
+    result = generate.finalize("", [make_chunk("Q1")])
+    assert result["answer"] == IDK_MESSAGE
+    assert result["sources"] == []
