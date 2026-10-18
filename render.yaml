@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: cursor-helper-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # The free plan has no persistent disk, so the vector database is rebuilt
+    # from data/ every time the service starts. Render provides $PORT.
+    startCommand: python ingest.py && chainlit run app.py --host 0.0.0.0 --port $PORT --headless
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.3
+      # Secrets: Render asks you for these values during setup (not stored in Git).
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CHAINLIT_AUTH_SECRET
+        sync: false
+      - key: DEMO_USERNAME
+        sync: false
+      - key: DEMO_PASSWORD
+        sync: false
