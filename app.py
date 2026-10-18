@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+import os
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
@@ -20,6 +22,20 @@ WELCOME = (
     "I answer only from my knowledge base, and I'll say \"I don't know\" "
     "when the answer isn't there. You can ask follow-up questions too."
 )
+
+
+@cl.password_auth_callback
+def auth_callback(username: str, password: str) -> cl.User | None:
+    """Shared demo login. Credentials come from environment variables."""
+    expected_user = os.environ.get("DEMO_USERNAME", "")
+    expected_pass = os.environ.get("DEMO_PASSWORD", "")
+    if not expected_user or not expected_pass:
+        return None  # nobody can log in until credentials are configured
+    user_ok = hmac.compare_digest(username.encode(), expected_user.encode())
+    pass_ok = hmac.compare_digest(password.encode(), expected_pass.encode())
+    if user_ok and pass_ok:
+        return cl.User(identifier=username, metadata={"role": "demo"})
+    return None
 
 
 @cl.set_starters
@@ -87,7 +103,6 @@ async def on_message(message: cl.Message) -> None:
         return
 
     chunks = prep["chunks"]
-    # print(f"[debug] standalone={prep['question']!r} too_far={prep['too_far']} top={[(c['id'], round(c['distance'], 2)) for c in chunks]}")
     reply = cl.Message(content="")
 
     try:
