@@ -2,3 +2,4 @@ chromadb
 python-dotenv
 google-genai
 chainlit
+pytest
