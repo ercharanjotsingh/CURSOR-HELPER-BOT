@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Iterator
 from typing import Any
 
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ from retrieve import RetrievalError, retrieve
 load_dotenv()  # reads GEMINI_API_KEY from the .env file
 
 MAX_RETRIES = 3  # attempts per model before moving to the next one
+HISTORY_TURNS = 3  # how many previous Q&A pairs are used to resolve follow-ups
 
 CITATION_RE = re.compile(r"\[(Q\d+)\]")
 
@@ -29,56 +31,19 @@ Rules:
 - Keep the answer short and practical.
 - At the end of the answer, cite the chunk(s) you used, like [Q5] or [Q5][Q7]."""
 
+CONDENSE_PROMPT = (
+    "Rewrite the user's latest message as one standalone question. Use the chat "
+    'history only to resolve references such as "it", "that" or "the previous one". '
+    "If the message is already standalone, return it unchanged. "
+    "Return only the question, with no explanation."
+)
+
 
 class GenerationError(RuntimeError):
     """Raised when the Gemini API cannot be reached or fails."""
 
 
-def build_user_prompt(question: str, chunks: list[dict[str, Any]]) -> str:
-    """Combine the retrieved chunks and the question into one prompt."""
-    context = "\n\n".join(f"[{c['question_number']}] {c['text']}" for c in chunks)
-    return f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
-
-
-def _call_llm(system_prompt: str, user_prompt: str) -> str:
-    """Send the prompt to Gemini and return its text."""
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise GenerationError("GEMINI_API_KEY is not set. Add it to your .env file.")
-    client = genai.Client(api_key=api_key)
-    models = [GEMINI_MODEL, *GEMINI_FALLBACK_MODELS]
-    last_error: Exception | None = None
-
-    for model in models:
-        for attempt in range(MAX_RETRIES):
-            try:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        temperature=0,
-                    ),
-                )
-                # An empty reply (e.g. a blocked response) counts as "I don't know".
-                return (response.text or IDK_MESSAGE).strip()
-            except Exception as exc:
-                last_error = exc
-                if _is_model_unavailable(exc):
-                    break  # this model is retired or not offered to you: try the next
-                if not _is_temporary_error(exc):
-                    raise GenerationError(
-                        f"Gemini request failed for model '{model}'. Check your API "
-                        f"key and the model name. ({exc})"
-                    ) from exc
-                if attempt < MAX_RETRIES - 1:
-                    time.sleep(2 ** (attempt + 1))  # wait 2s, then 4s
-        # Still overloaded after all retries: try the next model in the list.
-
-    raise GenerationError(
-        f"Gemini is busy or rate-limited for all models tried ({', '.join(models)}). "
-        f"Wait a minute and try again. ({last_error})"
-    )
+# ---------------------------------------------------------------- Gemini calls
 
 
 def _is_model_unavailable(exc: Exception) -> bool:
@@ -94,6 +59,97 @@ def _is_temporary_error(exc: Exception) -> bool:
         marker in text
         for marker in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "OVERLOADED")
     )
+
+
+def _stream_llm(system_prompt: str, user_prompt: str) -> Iterator[str]:
+    """Yield the model's reply in small pieces.
+
+    Retries and model fallback only happen before the first piece arrives.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise GenerationError("GEMINI_API_KEY is not set. Add it to your .env file.")
+
+    client = genai.Client(api_key=api_key)
+    models = [GEMINI_MODEL, *GEMINI_FALLBACK_MODELS]
+    last_error: Exception | None = None
+
+    for model in models:
+        for attempt in range(MAX_RETRIES):
+            started = False
+            try:
+                for piece in client.models.generate_content_stream(
+                    model=model,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=0,
+                    ),
+                ):
+                    if piece.text:
+                        started = True
+                        yield piece.text
+                return
+            except Exception as exc:
+                last_error = exc
+                if started:
+                    raise GenerationError(
+                        f"The Gemini reply was cut off midway. ({exc})"
+                    ) from exc
+                if _is_model_unavailable(exc):
+                    break  # retired or not offered to you: try the next model
+                if not _is_temporary_error(exc):
+                    raise GenerationError(
+                        f"Gemini request failed for model '{model}'. Check your API "
+                        f"key and the model name. ({exc})"
+                    ) from exc
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** (attempt + 1))  # wait 2s, then 4s
+
+    raise GenerationError(
+        f"Gemini is busy or rate-limited for all models tried ({', '.join(models)}). "
+        f"Wait a minute and try again. ({last_error})"
+    )
+
+
+def _call_llm(system_prompt: str, user_prompt: str) -> str:
+    """Return the full reply as one string (an empty reply counts as 'I don't know')."""
+    text = "".join(_stream_llm(system_prompt, user_prompt)).strip()
+    return text or IDK_MESSAGE
+
+
+# ------------------------------------------------------------------ RAG logic
+
+
+def build_user_prompt(question: str, chunks: list[dict[str, Any]]) -> str:
+    """Combine the retrieved chunks and the question into one prompt."""
+    context = "\n\n".join(f"[{c['question_number']}] {c['text']}" for c in chunks)
+    return f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
+
+
+def condense_question(question: str, history: list[tuple[str, str]] | None) -> str:
+    """Turn a follow-up like 'and how do I undo it?' into a standalone question.
+
+    history is a list of (user_message, bot_answer) pairs, oldest first.
+    Falls back to the original question if there is no history or the call fails.
+    """
+    if not history:
+        return question
+
+    transcript = "\n".join(
+        f"User: {user}\nAssistant: {bot}" for user, bot in history[-HISTORY_TURNS:]
+    )
+    prompt = (
+        f"Chat history:\n{transcript}\n\n"
+        f"Latest message: {question}\n\nStandalone question:"
+    )
+    try:
+        rewritten = _call_llm(CONDENSE_PROMPT, prompt).strip()
+    except GenerationError:
+        return question
+    if not rewritten or rewritten == IDK_MESSAGE:
+        return question
+    return rewritten
 
 
 def _is_idk(text: str) -> bool:
@@ -117,22 +173,51 @@ def _cited_sources(answer: str, chunks: list[dict[str, Any]]) -> list[dict[str, 
     ]
 
 
-def answer_question(question: str) -> dict[str, Any]:
+def prepare(
+    question: str, history: list[tuple[str, str]] | None = None
+) -> dict[str, Any]:
+    """Resolve follow-ups and retrieve chunks (no answer is generated yet).
+
+    Returns {"question": standalone question, "chunks": [...], "too_far": bool}.
+    """
+    standalone = condense_question(question, history)
+    chunks = retrieve(standalone)
+    # Cheap guard: if even the best chunk is far away, don't call the LLM.
+    too_far = not chunks or chunks[0]["distance"] > MAX_DISTANCE
+    return {"question": standalone, "chunks": chunks, "too_far": too_far}
+
+
+def stream_answer(question: str, chunks: list[dict[str, Any]]) -> Iterator[str]:
+    """Yield the answer piece by piece (used by the chat UI)."""
+    return _stream_llm(SYSTEM_PROMPT, build_user_prompt(question, chunks))
+
+
+def finalize(raw: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Clean up a finished reply: normalise 'I don't know' and attach sources."""
+    raw = raw.strip() or IDK_MESSAGE
+    if _is_idk(raw):
+        return {"answer": IDK_MESSAGE, "sources": []}
+    return {"answer": raw, "sources": _cited_sources(raw, chunks)}
+
+
+def answer_question(
+    question: str, history: list[tuple[str, str]] | None = None
+) -> dict[str, Any]:
     """Retrieve chunks, ask the LLM, and return answer + sources.
 
-    Returns: {"answer": str, "sources": list[dict], "chunks": list[dict]}
+    Returns: {"answer", "sources", "chunks", "standalone_question"}
     """
-    chunks = retrieve(question)
+    prep = prepare(question, history)
+    chunks = prep["chunks"]
+    standalone = prep["question"]
 
-    # Cheap guard: if even the best chunk is far away, don't call the LLM.
-    if not chunks or chunks[0]["distance"] > MAX_DISTANCE:
-        return {"answer": IDK_MESSAGE, "sources": [], "chunks": chunks}
+    if prep["too_far"]:
+        result = {"answer": IDK_MESSAGE, "sources": []}
+    else:
+        raw = _call_llm(SYSTEM_PROMPT, build_user_prompt(standalone, chunks))
+        result = finalize(raw, chunks)
 
-    raw = _call_llm(SYSTEM_PROMPT, build_user_prompt(question, chunks))
-    if _is_idk(raw):
-        return {"answer": IDK_MESSAGE, "sources": [], "chunks": chunks}
-
-    return {"answer": raw, "sources": _cited_sources(raw, chunks), "chunks": chunks}
+    return {**result, "chunks": chunks, "standalone_question": standalone}
 
 
 def main() -> None:
