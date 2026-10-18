@@ -87,7 +87,7 @@ async def on_message(message: cl.Message) -> None:
         return
 
     chunks = prep["chunks"]
-    print(f"[debug] standalone={prep['question']!r} too_far={prep['too_far']} top={[(c['id'], round(c['distance'], 2)) for c in chunks]}")
+    # print(f"[debug] standalone={prep['question']!r} too_far={prep['too_far']} top={[(c['id'], round(c['distance'], 2)) for c in chunks]}")
     reply = cl.Message(content="")
 
     try:
